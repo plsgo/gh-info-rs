@@ -8,7 +8,6 @@ services:
     environment:
       # 日志配置
       - LOG_LEVEL=info
-      - RUST_LOG=info
       # 服务绑定地址（必须设置为 0.0.0.0 以在容器内监听）
       - BIND_ADDRESS=0.0.0.0:8080
       # 缓存配置（可选，默认启用）
@@ -19,7 +18,7 @@ services:
       # - GITHUB_TOKEN=your_github_token_here
     volumes:
       # 持久化缓存数据
-      - ./cache.json:/app/data/cache.json
+      - ./data:/app/data/
     healthcheck:
       test:
         [

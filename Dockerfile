@@ -36,8 +36,8 @@ COPY --from=builder /app/target/release/gh-info-rs /app/gh-info-rs
 # 暴露端口
 EXPOSE 8080
 
-# 设置环境变量
-ENV RUST_LOG=info
+# 设置环境变量（默认值，可通过运行时环境变量覆盖）
+ENV LOG_LEVEL=info
 
 # 运行应用
 CMD ["./gh-info-rs"]
