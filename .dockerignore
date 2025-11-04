@@ -1,0 +1,12 @@
+target/
+.git/
+.gitignore
+.vscode/
+*.md
+.env
+.env.local
+*.log
+.DS_Store
+docker-compose.yml
+Dockerfile
+

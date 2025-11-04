@@ -1,0 +1,21 @@
+[package]
+name = "gh-info-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-web = "4.0"                                   # Actix-Web 核心
+actix-rt = "2.0"                                    # Actix 运行时
+reqwest = { version = "0.12.24", features = ["json", "rustls-tls"], default-features = false } # HTTP 客户端（使用 rustls 替代 OpenSSL）
+tokio = { version = "1.0", features = ["full"] }    # Actix Web 依赖的异步运行时
+serde = { version = "1.0", features = ["derive"] }  # JSON 序列化
+serde_json = "1.0"                                  # JSON 处理
+dotenv = "0.15"                                     # 加载环境变量
+thiserror = "2.0.17"                                   # 错误处理
+futures = "0.3"                                     # 异步工具（用于并发处理）
+moka = { version = "0.12", features = ["future"] }  # 内存缓存库，支持 TTL
+env_logger = "0.11"                                # 日志库，支持环境变量配置
+log = "0.4"                                         # 日志 facade
+
+[dev-dependencies]
+tokio-test = "0.4"                                  # 异步测试工具

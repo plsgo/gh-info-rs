@@ -1,0 +1,260 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cargo: 测试",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["test"],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      },
+      "problemMatcher": "$rustc"
+    },
+    {
+      "label": "cargo: 构建 (Debug)",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["build"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      },
+      "problemMatcher": "$rustc"
+    },
+    {
+      "label": "cargo: 构建 (Release)",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["build", "--release"],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      },
+      "problemMatcher": "$rustc"
+    },
+    {
+      "label": "cargo: 清理",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["clean"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      }
+    },
+    {
+      "label": "cargo: 运行",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["run"],
+      "options": {
+        "env": {
+          "LOG_LEVEL": "${input:logLevel}"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      },
+      "problemMatcher": "$rustc"
+    },
+    {
+      "label": "docker: 构建镜像",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "build",
+        "-t",
+        "gh-info-rs:latest",
+        "-t",
+        "gh-info-rs:${input:imageTag}",
+        "."
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "docker: 构建镜像 (无缓存)",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "build",
+        "--no-cache",
+        "-t",
+        "gh-info-rs:latest",
+        "-t",
+        "gh-info-rs:${input:imageTag}",
+        "."
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "docker: 运行容器",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-p",
+        "8080:8080",
+        "gh-info-rs:latest"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "docker-compose: 启动",
+      "type": "shell",
+      "command": "docker-compose",
+      "args": ["up", "--build"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "docker-compose: 停止",
+      "type": "shell",
+      "command": "docker-compose",
+      "args": ["down"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "docker-compose: 查看日志",
+      "type": "shell",
+      "command": "docker-compose",
+      "args": ["logs", "-f"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "docker: 推送镜像",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "push",
+        "${input:registryUrl}/gh-info-rs:${input:imageTag}"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      },
+      "problemMatcher": [],
+      "dependsOn": "docker: 构建镜像"
+    },
+    {
+      "label": "docker: 标记并推送镜像",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "tag",
+        "gh-info-rs:latest",
+        "${input:registryUrl}/gh-info-rs:${input:imageTag}"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "imageTag",
+      "description": "镜像标签",
+      "type": "promptString",
+      "default": "latest"
+    },
+    {
+      "id": "registryUrl",
+      "description": "镜像仓库地址 (例如: docker.io/username 或 registry.example.com)",
+      "type": "promptString",
+      "default": "docker.io/yourusername"
+    },
+    {
+      "id": "logLevel",
+      "description": "日志级别 (error, warn, info, debug, trace)",
+      "type": "pickString",
+      "options": [
+        {
+          "label": "error",
+          "value": "error"
+        },
+        {
+          "label": "warn",
+          "value": "warn"
+        },
+        {
+          "label": "info",
+          "value": "info"
+        },
+        {
+          "label": "debug",
+          "value": "debug"
+        },
+        {
+          "label": "trace",
+          "value": "trace"
+        }
+      ],
+      "default": "debug"
+    }
+  ]
+}
+

@@ -1,0 +1,36 @@
+services:
+  gh-info-rs:
+    image: purp1e/gh-info-rs:latest
+    container_name: gh-info-rs
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      # 日志配置
+      - LOG_LEVEL=info
+      - RUST_LOG=info
+      # 服务绑定地址（必须设置为 0.0.0.0 以在容器内监听）
+      - BIND_ADDRESS=0.0.0.0:8080
+      # 缓存配置（可选，默认启用）
+      - CACHE_ENABLED=true
+      - CACHE_TTL_SECONDS=600
+      - CACHE_FILE=/app/data/cache.json
+      # GitHub Token（可选，用于提高 API 速率限制）
+      # - GITHUB_TOKEN=your_github_token_here
+    volumes:
+      # 持久化缓存数据
+      - ./cache.json:/app/data/cache.json
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://localhost:8080/repos/octocat/Hello-World || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # 资源限制（使用 docker run 时添加: --memory=512m --cpus=1.0）
+    # 或在 docker-compose 中可以使用 mem_limit 和 cpus（需要 docker-compose v2+）
+    # mem_limit: 512m
+    # cpus: 1.0
