@@ -156,10 +156,10 @@ impl CacheManager {
 
         if config.enabled {
             log::info!("缓存已启用，TTL: {} 秒", config.ttl_seconds);
-            
+
             // 从磁盘加载缓存
             manager.load_from_disk().await;
-            
+
             // 启动后台保存任务（每30秒保存一次）
             let manager_clone = manager.clone_for_background();
             tokio::spawn(async move {
@@ -199,7 +199,7 @@ impl CacheManager {
                             .duration_since(UNIX_EPOCH)
                             .unwrap()
                             .as_secs();
-                        
+
                         let mut loaded_count = 0;
                         let mut store = self.persistent_store.write().await;
 
@@ -274,7 +274,7 @@ impl CacheManager {
             .as_secs();
 
         let store = self.persistent_store.read().await;
-        
+
         // 过滤掉已过期的条目
         let persistent_cache = PersistentCache {
             repo_info: store
@@ -340,14 +340,14 @@ impl CacheManager {
         if self.is_enabled() {
             let key = Self::repo_info_key(owner, repo);
             self.repo_info_cache.insert(key.clone(), info.clone()).await;
-            
+
             // 更新持久化存储
             let expires_at = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs()
                 + self.config.ttl_seconds;
-            
+
             let mut store = self.persistent_store.write().await;
             store.repo_info.insert(key, CachedEntry {
                 value: info,
@@ -370,14 +370,14 @@ impl CacheManager {
         if self.is_enabled() {
             let key = Self::releases_key(owner, repo);
             self.releases_cache.insert(key.clone(), releases.clone()).await;
-            
+
             // 更新持久化存储
             let expires_at = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs()
                 + self.config.ttl_seconds;
-            
+
             let mut store = self.persistent_store.write().await;
             store.releases.insert(key, CachedEntry {
                 value: releases,
@@ -400,14 +400,14 @@ impl CacheManager {
         if self.is_enabled() {
             let key = Self::latest_release_key(owner, repo);
             self.latest_release_cache.insert(key.clone(), release.clone()).await;
-            
+
             // 更新持久化存储
             let expires_at = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs()
                 + self.config.ttl_seconds;
-            
+
             let mut store = self.persistent_store.write().await;
             store.latest_release.insert(key, CachedEntry {
                 value: release,
@@ -466,7 +466,7 @@ impl CacheManager {
                 .unwrap()
                 .as_secs();
             let expires_at = now + self.config.ttl_seconds;
-            
+
             let metadata = FileCacheMetadata {
                 url: url.to_string(),
                 file_path: file_path.clone(),
@@ -475,16 +475,16 @@ impl CacheManager {
                 expires_at,
                 last_accessed_at: now, // 设置初始访问时间为当前时间
             };
-            
+
             self.file_cache.insert(key.clone(), metadata.clone()).await;
-            
+
             // 更新文件路径到缓存键的映射
             let mut mapping = self.file_path_to_key.write().await;
             mapping.insert(file_path.clone(), key);
             drop(mapping);
-            
+
             log::debug!("文件已缓存: {} -> {:?}", url, file_path);
-            
+
             // 清理旧文件，保留最常访问的50个
             self.cleanup_file_cache(50).await;
         }
@@ -544,7 +544,7 @@ impl CacheManager {
             let files_to_delete = &file_metadatas[max_files..];
             let mut deleted_count = 0;
             let mut mapping = self.file_path_to_key.write().await;
-            
+
             for (file_path, metadata) in files_to_delete {
                 // 删除文件
                 if let Err(e) = std::fs::remove_file(file_path) {
@@ -552,16 +552,16 @@ impl CacheManager {
                 } else {
                     deleted_count += 1;
                     log::debug!("已删除缓存文件: {:?} (URL: {})", file_path, metadata.url);
-                    
+
                     // 从映射中删除
                     mapping.remove(file_path);
-                    
+
                     // 从缓存中删除（通过缓存键）
                     let cache_key = Self::file_cache_key(&metadata.url);
                     self.file_cache.invalidate(&cache_key).await;
                 }
             }
-            
+
             log::info!("文件缓存清理完成: 保留 {} 个文件，删除 {} 个文件", max_files, deleted_count);
         }
     }
@@ -588,7 +588,7 @@ impl BackgroundCacheManager {
         // 从内存缓存同步到持久化存储
         // 注意：moka 不提供遍历方法，所以我们只能保存持久化存储中的内容
         let store = self.persistent_store.read().await;
-        
+
         // 过滤掉已过期的条目
         let persistent_cache = PersistentCache {
             repo_info: store
