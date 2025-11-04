@@ -1,4 +1,13 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+
+// 健康检查响应结构
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct HealthResponse {
+    pub status: String,
+    pub service: String,
+    pub version: String,
+}
 
 // GitHub API 返回的仓库基本信息
 #[derive(Debug, Deserialize, Serialize)]
@@ -38,7 +47,7 @@ pub struct GithubRelease {
 }
 
 // 整理后的仓库信息（用于 API 响应）
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RepoInfo {
     pub repo: String,
     pub name: String,
@@ -51,7 +60,7 @@ pub struct RepoInfo {
 }
 
 // 整理后的 Release 信息（用于 API 响应）
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ReleaseInfo {
     pub tag_name: String,
     pub name: Option<String>,
@@ -61,7 +70,7 @@ pub struct ReleaseInfo {
 }
 
 // 整理后的最新版本信息（用于 API 响应）
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct LatestReleaseInfo {
     pub repo: String,
     pub latest_version: String,
@@ -71,7 +80,7 @@ pub struct LatestReleaseInfo {
 }
 
 // 批量请求的数据结构
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct BatchRequest {
     pub repos: Vec<String>, // 格式: "owner/repo" 或 ["owner1/repo1", "owner2/repo2"]
     #[serde(default)]
@@ -79,7 +88,7 @@ pub struct BatchRequest {
 }
 
 // 单个仓库的批量响应结果
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RepoBatchResult {
     pub repo: String,
     pub success: bool,
@@ -94,13 +103,13 @@ pub struct RepoBatchResult {
 }
 
 // 批量响应数据结构（数组格式）
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct BatchResponse {
     pub results: Vec<RepoBatchResult>,
 }
 
 // 批量响应数据结构（Map 格式，方便客户端按 repo 查找）
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct BatchResponseMap {
     #[serde(rename = "results_map")]
     pub results_map: std::collections::HashMap<String, RepoBatchResult>,

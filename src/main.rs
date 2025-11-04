@@ -1,8 +1,12 @@
 use actix_web::{App, HttpServer};
 use gh_info_rs::cache::get_cache_manager;
 use gh_info_rs::handlers::{
-    batch_get_repos, batch_get_repos_map, get_latest_release, get_releases, get_repo_info,
+    batch_get_repos, batch_get_repos_map, download_attachment, get_latest_release, get_releases, get_repo_info,
+    health, health_check,
 };
+use gh_info_rs::ApiDoc;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -24,11 +28,15 @@ async fn main() -> std::io::Result<()> {
     println!("🚀 GitHub API 信息收集服务启动中...");
     println!("📡 服务地址: http://{}", bind_addr);
     println!("📚 可用端点:");
+    println!("   GET  /                                    - 健康检查和基本信息");
+    println!("   GET  /health                              - 健康检查端点");
     println!("   GET  /repos/{{owner}}/{{repo}}              - 获取仓库基本信息");
     println!("   GET  /repos/{{owner}}/{{repo}}/releases     - 获取所有 releases");
     println!("   GET  /repos/{{owner}}/{{repo}}/releases/latest - 获取最新 release");
     println!("   POST /repos/batch                          - 批量获取多个仓库信息（数组格式）");
     println!("   POST /repos/batch/map                      - 批量获取多个仓库信息（Map 格式）");
+    println!("   GET  /download?url={{url}}                 - 下载附件文件（支持缓存）");
+    println!("   GET  /swagger-ui/*                         - API 文档页面");
     println!();
 
     // 初始化缓存管理器（加载持久化缓存）
@@ -38,11 +46,18 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(|| {
         App::new()
+            .service(
+                SwaggerUi::new("/swagger-ui/{_:.*}")
+                    .url("/api-doc/openapi.json", ApiDoc::openapi()),
+            )
+            .service(health_check)
+            .service(health)
             .service(get_repo_info)
             .service(get_releases)
             .service(get_latest_release)
             .service(batch_get_repos)
             .service(batch_get_repos_map)
+            .service(download_attachment)
     })
     .bind(&bind_addr)?
     .run()

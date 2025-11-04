@@ -1,16 +1,21 @@
 use crate::cache::get_cache_manager;
 use crate::error::AppError;
 use crate::models::{
-    BatchRequest, BatchResponse, BatchResponseMap, GithubRelease, GithubRepo, LatestReleaseInfo,
-    ReleaseInfo, RepoBatchResult, RepoInfo,
+    BatchRequest, BatchResponse, BatchResponseMap, GithubRelease, GithubRepo,
+    LatestReleaseInfo, ReleaseInfo, RepoBatchResult, RepoInfo,
 };
 use actix_web::{get, post, web, HttpResponse, Responder};
 use futures::future::join_all;
 use futures::join;
+use futures::StreamExt;
 use log;
 use reqwest::Client;
 use std::collections::HashMap;
 use std::env;
+use std::path::PathBuf;
+use sha2::{Sha256, Digest};
+use tokio::fs;
+use tokio::io::AsyncWriteExt;
 
 // 获取 GitHub token（可选，如果设置了环境变量则使用）
 fn get_github_token() -> Option<String> {
@@ -202,7 +207,58 @@ pub async fn fetch_latest_release(owner: &str, repo: &str) -> Result<LatestRelea
     Ok(latest_release)
 }
 
+// API 端点：GET / - 健康检查和基本信息
+#[utoipa::path(
+    get,
+    path = "/",
+    tag = "health",
+    responses(
+        (status = 200, description = "服务健康", body = HealthResponse)
+    )
+)]
+#[get("/")]
+pub async fn health_check() -> impl Responder {
+    use crate::models::HealthResponse;
+    HttpResponse::Ok().json(HealthResponse {
+        status: "ok".to_string(),
+        service: "GitHub API 信息收集服务".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    })
+}
+
+// API 端点：GET /health - 健康检查端点
+#[utoipa::path(
+    get,
+    path = "/health",
+    tag = "health",
+    responses(
+        (status = 200, description = "服务健康", body = HealthResponse)
+    )
+)]
+#[get("/health")]
+pub async fn health() -> impl Responder {
+    use crate::models::HealthResponse;
+    HttpResponse::Ok().json(HealthResponse {
+        status: "ok".to_string(),
+        service: "GitHub API 信息收集服务".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    })
+}
+
 // API 端点：GET /repos/{owner}/{repo}
+#[utoipa::path(
+    get,
+    path = "/repos/{owner}/{repo}",
+    tag = "repos",
+    params(
+        ("owner" = String, Path, description = "仓库所有者"),
+        ("repo" = String, Path, description = "仓库名称")
+    ),
+    responses(
+        (status = 200, description = "成功获取仓库信息", body = RepoInfo),
+        (status = 404, description = "仓库不存在")
+    )
+)]
 #[get("/repos/{owner}/{repo}")]
 pub async fn get_repo_info(path: web::Path<(String, String)>) -> Result<impl Responder, AppError> {
     let (owner, repo) = path.into_inner();
@@ -212,6 +268,19 @@ pub async fn get_repo_info(path: web::Path<(String, String)>) -> Result<impl Res
 }
 
 // API 端点：GET /repos/{owner}/{repo}/releases
+#[utoipa::path(
+    get,
+    path = "/repos/{owner}/{repo}/releases",
+    tag = "repos",
+    params(
+        ("owner" = String, Path, description = "仓库所有者"),
+        ("repo" = String, Path, description = "仓库名称")
+    ),
+    responses(
+        (status = 200, description = "成功获取所有 releases", body = Vec<ReleaseInfo>),
+        (status = 404, description = "仓库不存在")
+    )
+)]
 #[get("/repos/{owner}/{repo}/releases")]
 pub async fn get_releases(path: web::Path<(String, String)>) -> Result<impl Responder, AppError> {
     let (owner, repo) = path.into_inner();
@@ -221,6 +290,19 @@ pub async fn get_releases(path: web::Path<(String, String)>) -> Result<impl Resp
 }
 
 // API 端点：GET /repos/{owner}/{repo}/releases/latest
+#[utoipa::path(
+    get,
+    path = "/repos/{owner}/{repo}/releases/latest",
+    tag = "repos",
+    params(
+        ("owner" = String, Path, description = "仓库所有者"),
+        ("repo" = String, Path, description = "仓库名称")
+    ),
+    responses(
+        (status = 200, description = "成功获取最新 release", body = LatestReleaseInfo),
+        (status = 404, description = "仓库不存在或没有 releases")
+    )
+)]
 #[get("/repos/{owner}/{repo}/releases/latest")]
 pub async fn get_latest_release(
     path: web::Path<(String, String)>,
@@ -361,6 +443,16 @@ async fn process_single_repo(repo_str: &str, fields: &[String]) -> RepoBatchResu
 }
 
 // API 端点：POST /repos/batch - 批量获取多个仓库的信息（返回数组格式）
+#[utoipa::path(
+    post,
+    path = "/repos/batch",
+    tag = "repos",
+    request_body = BatchRequest,
+    responses(
+        (status = 200, description = "批量获取成功", body = BatchResponse),
+        (status = 400, description = "请求参数错误")
+    )
+)]
 #[post("/repos/batch")]
 pub async fn batch_get_repos(body: web::Json<BatchRequest>) -> Result<impl Responder, AppError> {
     let repos = &body.repos;
@@ -387,6 +479,16 @@ pub async fn batch_get_repos(body: web::Json<BatchRequest>) -> Result<impl Respo
 }
 
 // API 端点：POST /repos/batch/map - 批量获取多个仓库的信息（返回 Map 格式，方便客户端处理）
+#[utoipa::path(
+    post,
+    path = "/repos/batch/map",
+    tag = "repos",
+    request_body = BatchRequest,
+    responses(
+        (status = 200, description = "批量获取成功", body = BatchResponseMap),
+        (status = 400, description = "请求参数错误")
+    )
+)]
 #[post("/repos/batch/map")]
 pub async fn batch_get_repos_map(
     body: web::Json<BatchRequest>,
@@ -418,4 +520,181 @@ pub async fn batch_get_repos_map(
     log::info!("批量请求完成: 成功 {}/{}", success_count, repos.len());
 
     Ok(HttpResponse::Ok().json(BatchResponseMap { results_map }))
+}
+
+// 下载附件文件（支持缓存）
+#[utoipa::path(
+    get,
+    path = "/download",
+    tag = "download",
+    params(
+        ("url" = String, Query, description = "要下载的文件 URL")
+    ),
+    responses(
+        (status = 200, description = "文件下载成功", content_type = "application/octet-stream"),
+        (status = 400, description = "缺少 url 参数")
+    )
+)]
+#[get("/download")]
+pub async fn download_attachment(query: web::Query<HashMap<String, String>>) -> Result<impl Responder, AppError> {
+    let url = query.get("url").ok_or_else(|| {
+        AppError::BadRequest("缺少 url 参数".to_string())
+    })?;
+
+    log::info!("请求下载文件: {}", url);
+
+    let cache = get_cache_manager().await;
+
+    // 先检查缓存
+    if let Some(metadata) = cache.get_file_cache(url).await {
+        log::debug!("从缓存获取文件: {}", url);
+        
+        let content_type = metadata.content_type
+            .as_ref()
+            .and_then(|ct| ct.parse::<mime::Mime>().ok())
+            .unwrap_or_else(|| mime::APPLICATION_OCTET_STREAM);
+        
+        let filename = metadata.original_filename.clone();
+        let file_path = metadata.file_path.clone();
+        
+        // 使用流式读取缓存文件（避免一次性加载大文件到内存）
+        use actix_web::web::Bytes;
+        use futures::stream::TryStreamExt;
+        
+        let file = fs::File::open(&file_path).await
+            .map_err(|e| AppError::ApiError(format!("打开缓存文件失败: {}", e)))?;
+        
+        let stream = tokio_util::io::ReaderStream::new(file);
+        let bytes_stream = stream.map_ok(|b| Bytes::from(b));
+        
+        return Ok(HttpResponse::Ok()
+            .content_type(content_type.clone())
+            .append_header((
+                "Content-Disposition",
+                format!("attachment; filename=\"{}\"", filename)
+            ))
+            .streaming(bytes_stream));
+    }
+
+    // 缓存未命中，从 GitHub 流式下载
+    log::debug!("从 GitHub 流式下载文件: {}", url);
+    let client = create_client();
+    
+    let mut request = client
+        .get(url)
+        .header("User-Agent", "gh-info-rs")
+        .header("Accept", "*/*");
+
+    // 如果设置了 token，则添加认证头
+    if let Some(token) = get_github_token() {
+        request = request.header("Authorization", format!("Bearer {}", token));
+    }
+
+    let response = request.send().await?;
+
+    if !response.status().is_success() {
+        return Err(AppError::ApiError(format!(
+            "GitHub 返回状态码: {}",
+            response.status()
+        )));
+    }
+
+    // 先获取 Content-Type（在移动 response 之前）
+    let content_type = response.headers()
+        .get("content-type")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|ct| ct.parse::<mime::Mime>().ok())
+        .unwrap_or_else(|| mime::APPLICATION_OCTET_STREAM);
+
+    // 从 URL 提取文件名
+    let filename = url
+        .split('/')
+        .last()
+        .unwrap_or("file")
+        .split('?')
+        .next()
+        .unwrap_or("file")
+        .to_string();
+
+    // 生成缓存文件名（基于 URL 的 hash）
+    let mut hasher = Sha256::new();
+    hasher.update(url.as_bytes());
+    let file_hash = hex::encode(hasher.finalize());
+    
+    // 尝试从文件名获取扩展名
+    let filename_path = PathBuf::from(&filename);
+    let extension = filename_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("bin");
+    
+    let cache_filename = format!("{}.{}", file_hash, extension);
+    let cache_file_path = cache.get_file_cache_dir().join(&cache_filename);
+    let filename_clone = filename.clone();
+    let url_clone = url.to_string();
+    let content_type_str = content_type.to_string();
+
+    // 创建缓存文件（用于写入）
+    let cache_file = fs::File::create(&cache_file_path).await
+        .map_err(|e| AppError::ApiError(format!("创建缓存文件失败: {}", e)))?;
+
+    // 获取响应流并转换为字节流
+    let bytes_stream = response.bytes_stream();
+    
+    // 创建一个流，同时写入缓存和发送给客户端
+    // 使用 channel 来分离写入任务，避免阻塞流
+    use tokio::sync::mpsc;
+    use actix_web::web::Bytes;
+    
+    let (tx, mut rx) = mpsc::channel::<Bytes>(100);
+    let tx_for_stream = tx.clone(); // mpsc::Sender 实现了 Clone
+    let cache_file_path_clone = cache_file_path.clone();
+    let url_for_cache = url_clone.clone();
+    let filename_for_cache = filename_clone.clone();
+    let content_type_for_cache = content_type_str.clone();
+    
+    // 启动后台任务写入缓存文件
+    tokio::spawn(async move {
+        let mut file = cache_file;
+        while let Some(bytes) = rx.recv().await {
+            if let Err(e) = file.write_all(&bytes).await {
+                log::warn!("写入缓存文件失败: {}", e);
+                break;
+            }
+        }
+        
+        // 文件写入完成，刷新并更新缓存元数据
+        if let Err(e) = file.flush().await {
+            log::warn!("刷新缓存文件失败: {}", e);
+        }
+        
+        let cache = get_cache_manager().await;
+        cache.set_file_cache(
+            &url_for_cache,
+            cache_file_path_clone,
+            filename_for_cache,
+            Some(content_type_for_cache),
+        ).await;
+        log::info!("文件已流式下载并缓存: {}", url_for_cache);
+    });
+
+    // 创建一个流，将数据同时发送给客户端和缓存写入任务
+    let stream = bytes_stream.map(move |result| {
+        match result {
+            Ok(bytes) => {
+                // 发送到缓存写入任务（非阻塞，如果 channel 满了就丢弃）
+                let _ = tx_for_stream.try_send(bytes.clone());
+                Ok(bytes)
+            }
+            Err(e) => Err(AppError::ApiError(format!("流式下载错误: {}", e))),
+        }
+    });
+
+    Ok(HttpResponse::Ok()
+        .content_type(content_type.clone())
+        .append_header((
+            "Content-Disposition",
+            format!("attachment; filename=\"{}\"", filename)
+        ))
+        .streaming(stream))
 }

@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tokio::time::interval;
+use sha2::{Sha256, Digest};
 
 // 缓存键类型
 type CacheKey = String;
@@ -56,15 +57,27 @@ impl CacheConfig {
     }
 }
 
+// 文件缓存元数据
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileCacheMetadata {
+    pub url: String,
+    pub file_path: PathBuf,
+    pub original_filename: String,
+    pub content_type: Option<String>,
+    pub expires_at: u64,
+}
+
 // 缓存管理器
 pub struct CacheManager {
     config: CacheConfig,
     repo_info_cache: Cache<CacheKey, RepoInfo>,
     releases_cache: Cache<CacheKey, Vec<ReleaseInfo>>,
     latest_release_cache: Cache<CacheKey, LatestReleaseInfo>,
+    file_cache: Cache<CacheKey, FileCacheMetadata>,
     // 持久化存储（用于保存和加载）
     persistent_store: Arc<RwLock<PersistentCache>>,
     cache_file_path: PathBuf,
+    file_cache_dir: PathBuf,
 }
 
 impl CacheManager {
@@ -76,11 +89,34 @@ impl CacheManager {
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("cache.json"));
 
+        // 确定文件缓存目录（使用环境变量 FILE_CACHE_DIR）
+        // 如果未设置，则根据 CACHE_FILE 的父目录智能推断
+        let file_cache_dir = env::var("FILE_CACHE_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                // 如果 CACHE_FILE 在 /app/data/ 目录下，则使用 /app/data/cache_files
+                // 否则使用 cache_files（与 cache.json 同级）
+                if let Some(parent) = cache_file_path.parent() {
+                    if parent == PathBuf::from("/app/data") {
+                        PathBuf::from("/app/data/cache_files")
+                    } else {
+                        parent.join("cache_files")
+                    }
+                } else {
+                    PathBuf::from("cache_files")
+                }
+            });
+
         // 确保缓存目录存在
         if let Some(parent) = cache_file_path.parent() {
             if let Err(e) = std::fs::create_dir_all(parent) {
                 log::warn!("无法创建缓存目录: {:?}, 错误: {}", parent, e);
             }
+        }
+
+        // 确保文件缓存目录存在
+        if let Err(e) = std::fs::create_dir_all(&file_cache_dir) {
+            log::warn!("无法创建文件缓存目录: {:?}, 错误: {}", file_cache_dir, e);
         }
 
         // 创建持久化存储
@@ -105,8 +141,13 @@ impl CacheManager {
                 .max_capacity(10_000)
                 .time_to_live(ttl)
                 .build(),
+            file_cache: Cache::builder()
+                .max_capacity(10_000)
+                .time_to_live(ttl)
+                .build(),
             persistent_store: persistent_store.clone(),
             cache_file_path: cache_file_path.clone(),
+            file_cache_dir: file_cache_dir.clone(),
         };
 
         if config.enabled {
@@ -369,6 +410,69 @@ impl CacheManager {
                 expires_at,
             });
         }
+    }
+
+    // 生成文件缓存键（基于URL的hash）
+    fn file_cache_key(url: &str) -> CacheKey {
+        let mut hasher = Sha256::new();
+        hasher.update(url.as_bytes());
+        format!("file:{}", hex::encode(hasher.finalize()))
+    }
+
+    // 获取文件缓存元数据
+    pub async fn get_file_cache(&self, url: &str) -> Option<FileCacheMetadata> {
+        if !self.is_enabled() {
+            return None;
+        }
+        let key = Self::file_cache_key(url);
+        if let Some(metadata) = self.file_cache.get(&key).await {
+            // 检查文件是否仍然存在
+            if metadata.file_path.exists() {
+                // 检查是否过期
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                if metadata.expires_at > now {
+                    return Some(metadata);
+                }
+            }
+        }
+        None
+    }
+
+    // 保存文件到缓存
+    pub async fn set_file_cache(
+        &self,
+        url: &str,
+        file_path: PathBuf,
+        original_filename: String,
+        content_type: Option<String>,
+    ) {
+        if self.is_enabled() {
+            let key = Self::file_cache_key(url);
+            let expires_at = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + self.config.ttl_seconds;
+            
+            let metadata = FileCacheMetadata {
+                url: url.to_string(),
+                file_path: file_path.clone(),
+                original_filename,
+                content_type,
+                expires_at,
+            };
+            
+            self.file_cache.insert(key, metadata.clone()).await;
+            log::debug!("文件已缓存: {} -> {:?}", url, file_path);
+        }
+    }
+
+    // 获取文件缓存目录
+    pub fn get_file_cache_dir(&self) -> &PathBuf {
+        &self.file_cache_dir
     }
 }
 

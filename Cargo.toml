@@ -6,8 +6,9 @@ edition = "2021"
 [dependencies]
 actix-web = "4.0"                                   # Actix-Web 核心
 actix-rt = "2.0"                                    # Actix 运行时
-reqwest = { version = "0.12.24", features = ["json", "rustls-tls"], default-features = false } # HTTP 客户端（使用 rustls 替代 OpenSSL）
+reqwest = { version = "0.12.24", features = ["json", "rustls-tls", "stream"], default-features = false } # HTTP 客户端（使用 rustls 替代 OpenSSL）
 tokio = { version = "1.0", features = ["full"] }    # Actix Web 依赖的异步运行时
+tokio-util = { version = "0.7", features = ["io"] } # Tokio IO 工具
 serde = { version = "1.0", features = ["derive"] }  # JSON 序列化
 serde_json = "1.0"                                  # JSON 处理
 dotenv = "0.15"                                     # 加载环境变量
@@ -16,6 +17,11 @@ futures = "0.3"                                     # 异步工具（用于并�
 moka = { version = "0.12", features = ["future"] }  # 内存缓存库，支持 TTL
 env_logger = "0.11"                                # 日志库，支持环境变量配置
 log = "0.4"                                         # 日志 facade
+sha2 = "0.10"                                       # SHA-256 哈希算法
+hex = "0.4"                                         # 十六进制编码
+mime = "0.3"                                        # MIME 类型处理
+utoipa = { version = "4.0", features = ["actix_extras"] }  # OpenAPI 文档生成
+utoipa-swagger-ui = { version = "6.0", features = ["actix-web"] }  # Swagger UI 集成
 
 [dev-dependencies]
 tokio-test = "0.4"                                  # 异步测试工具

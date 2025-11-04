@@ -1,3 +1,5 @@
 /target
 temp/
 .env
+cache.json
+cache_files/
