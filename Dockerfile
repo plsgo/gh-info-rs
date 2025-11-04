@@ -3,6 +3,9 @@ FROM rust:1.91.0-alpine3.22 AS builder
 
 WORKDIR /app
 
+# 配置 Alpine 镜像源（优先使用 USTC）
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
+
 # 安装必要的构建依赖（Alpine 使用 musl libc）
 # 注意：使用 rustls 后不需要 OpenSSL 开发库
 RUN apk add --no-cache \
@@ -25,6 +28,9 @@ RUN cargo build --release && \
 FROM alpine:latest
 
 WORKDIR /app
+
+# 配置 Alpine 镜像源（优先使用 USTC）
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
 
 # 安装运行时依赖（仅 ca-certificates 用于 HTTPS 证书验证）
 # 使用 rustls 后不需要 OpenSSL 运行时库

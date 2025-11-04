@@ -568,14 +568,11 @@ pub async fn download_attachment(
 
     log::info!("请求下载文件: {} (IP: {})", url, client_ip);
 
-    // 获取限流管理器并检查限流
+    // 获取限流管理器并获取并发下载许可
     let rate_limit_manager = get_rate_limit_manager().await;
 
-    // 检查请求频率限制
-    rate_limit_manager.check_rate_limit(&client_ip).await?;
-
     // 获取并发下载许可（这会在下载完成后自动释放）
-    let _permit = rate_limit_manager.acquire_download_permit().await;
+    let permit = rate_limit_manager.acquire_download_permit().await;
 
     let cache = get_cache_manager().await;
 
@@ -602,9 +599,15 @@ pub async fn download_attachment(
         let bytes_stream = stream.map_ok(|b| Bytes::from(b))
             .map(|r| r.map_err(|e| AppError::ApiError(format!("读取文件错误: {}", e))));
 
-        // 对缓存文件也应用速度限制（避免缓存被滥用）
-        let rate_limited_stream = rate_limit_manager.limit_speed(bytes_stream);
-        let final_stream = rate_limited_stream.into_stream();
+        // 将 permit 绑定到流上，确保在整个流完成之前都不会释放
+        // 使用 map 将 permit 移动到闭包中，permit 会在流完成时自动释放
+        // 注意：permit 需要在整个流期间保持，所以将其移动到闭包的捕获中
+        let permit_for_stream = permit;
+        let stream_with_permit = bytes_stream.map(move |result| {
+            // permit_for_stream 在闭包中保持，直到流完成
+            let _keep_permit = &permit_for_stream;
+            result
+        });
 
         return Ok(HttpResponse::Ok()
             .content_type(content_type.clone())
@@ -612,7 +615,7 @@ pub async fn download_attachment(
                 "Content-Disposition",
                 format!("attachment; filename=\"{}\"", filename)
             ))
-            .streaming(final_stream));
+            .streaming(stream_with_permit));
     }
 
     // 缓存未命中，从 GitHub 流式下载
@@ -718,7 +721,12 @@ pub async fn download_attachment(
     });
 
     // 创建一个流，将数据同时发送给客户端和缓存写入任务
+    // 将 permit 绑定到流上，确保在整个流完成之前都不会释放
+    // 注意：permit 需要在整个流期间保持，所以将其移动到闭包的捕获中
+    let permit_for_stream = permit;
     let stream = bytes_stream.map(move |result| {
+        // permit_for_stream 在闭包中保持，直到流完成
+        let _keep_permit = &permit_for_stream;
         match result {
             Ok(bytes) => {
                 // 发送到缓存写入任务（非阻塞，如果 channel 满了就丢弃）
@@ -729,15 +737,11 @@ pub async fn download_attachment(
         }
     });
 
-    // 应用下载速度限制
-    let rate_limited_stream = rate_limit_manager.limit_speed(stream);
-    let final_stream = rate_limited_stream.into_stream();
-
     Ok(HttpResponse::Ok()
         .content_type(content_type.clone())
         .append_header((
             "Content-Disposition",
             format!("attachment; filename=\"{}\"", filename)
         ))
-        .streaming(final_stream))
+        .streaming(stream))
 }
