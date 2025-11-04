@@ -4,7 +4,8 @@ use crate::models::{
     BatchRequest, BatchResponse, BatchResponseMap, GithubRelease, GithubRepo,
     LatestReleaseInfo, ReleaseInfo, RepoBatchResult, RepoInfo,
 };
-use actix_web::{get, post, web, HttpResponse, Responder};
+use crate::rate_limit::get_rate_limit_manager;
+use actix_web::{get, post, web, HttpResponse, Responder, HttpRequest};
 use futures::future::join_all;
 use futures::join;
 use futures::StreamExt;
@@ -536,50 +537,88 @@ pub async fn batch_get_repos_map(
     )
 )]
 #[get("/download")]
-pub async fn download_attachment(query: web::Query<HashMap<String, String>>) -> Result<impl Responder, AppError> {
+pub async fn download_attachment(
+    req: HttpRequest,
+    query: web::Query<HashMap<String, String>>,
+) -> Result<impl Responder, AppError> {
     let url = query.get("url").ok_or_else(|| {
         AppError::BadRequest("缺少 url 参数".to_string())
     })?;
 
-    log::info!("请求下载文件: {}", url);
+    // 获取客户端 IP 地址（用于限流）
+    let client_ip = req
+        .connection_info()
+        .peer_addr()
+        .map(|s| s.to_string())
+        .or_else(|| {
+            // 尝试从 X-Forwarded-For 或 X-Real-IP 获取（如果使用反向代理）
+            req.headers()
+                .get("X-Forwarded-For")
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| s.split(',').next())
+                .map(|s| s.trim().to_string())
+                .or_else(|| {
+                    req.headers()
+                        .get("X-Real-IP")
+                        .and_then(|h| h.to_str().ok())
+                        .map(|s| s.to_string())
+                })
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+
+    log::info!("请求下载文件: {} (IP: {})", url, client_ip);
+
+    // 获取限流管理器并检查限流
+    let rate_limit_manager = get_rate_limit_manager().await;
+
+    // 检查请求频率限制
+    rate_limit_manager.check_rate_limit(&client_ip).await?;
+
+    // 获取并发下载许可（这会在下载完成后自动释放）
+    let _permit = rate_limit_manager.acquire_download_permit().await;
 
     let cache = get_cache_manager().await;
 
     // 先检查缓存
     if let Some(metadata) = cache.get_file_cache(url).await {
         log::debug!("从缓存获取文件: {}", url);
-        
+
         let content_type = metadata.content_type
             .as_ref()
             .and_then(|ct| ct.parse::<mime::Mime>().ok())
             .unwrap_or_else(|| mime::APPLICATION_OCTET_STREAM);
-        
+
         let filename = metadata.original_filename.clone();
         let file_path = metadata.file_path.clone();
-        
+
         // 使用流式读取缓存文件（避免一次性加载大文件到内存）
         use actix_web::web::Bytes;
         use futures::stream::TryStreamExt;
-        
+
         let file = fs::File::open(&file_path).await
             .map_err(|e| AppError::ApiError(format!("打开缓存文件失败: {}", e)))?;
-        
+
         let stream = tokio_util::io::ReaderStream::new(file);
-        let bytes_stream = stream.map_ok(|b| Bytes::from(b));
-        
+        let bytes_stream = stream.map_ok(|b| Bytes::from(b))
+            .map(|r| r.map_err(|e| AppError::ApiError(format!("读取文件错误: {}", e))));
+
+        // 对缓存文件也应用速度限制（避免缓存被滥用）
+        let rate_limited_stream = rate_limit_manager.limit_speed(bytes_stream);
+        let final_stream = rate_limited_stream.into_stream();
+
         return Ok(HttpResponse::Ok()
             .content_type(content_type.clone())
             .append_header((
                 "Content-Disposition",
                 format!("attachment; filename=\"{}\"", filename)
             ))
-            .streaming(bytes_stream));
+            .streaming(final_stream));
     }
 
     // 缓存未命中，从 GitHub 流式下载
     log::debug!("从 GitHub 流式下载文件: {}", url);
     let client = create_client();
-    
+
     let mut request = client
         .get(url)
         .header("User-Agent", "gh-info-rs")
@@ -620,14 +659,14 @@ pub async fn download_attachment(query: web::Query<HashMap<String, String>>) -> 
     let mut hasher = Sha256::new();
     hasher.update(url.as_bytes());
     let file_hash = hex::encode(hasher.finalize());
-    
+
     // 尝试从文件名获取扩展名
     let filename_path = PathBuf::from(&filename);
     let extension = filename_path
         .extension()
         .and_then(|ext| ext.to_str())
         .unwrap_or("bin");
-    
+
     let cache_filename = format!("{}.{}", file_hash, extension);
     let cache_file_path = cache.get_file_cache_dir().join(&cache_filename);
     let filename_clone = filename.clone();
@@ -640,19 +679,19 @@ pub async fn download_attachment(query: web::Query<HashMap<String, String>>) -> 
 
     // 获取响应流并转换为字节流
     let bytes_stream = response.bytes_stream();
-    
+
     // 创建一个流，同时写入缓存和发送给客户端
     // 使用 channel 来分离写入任务，避免阻塞流
     use tokio::sync::mpsc;
     use actix_web::web::Bytes;
-    
+
     let (tx, mut rx) = mpsc::channel::<Bytes>(100);
     let tx_for_stream = tx.clone(); // mpsc::Sender 实现了 Clone
     let cache_file_path_clone = cache_file_path.clone();
     let url_for_cache = url_clone.clone();
     let filename_for_cache = filename_clone.clone();
     let content_type_for_cache = content_type_str.clone();
-    
+
     // 启动后台任务写入缓存文件
     tokio::spawn(async move {
         let mut file = cache_file;
@@ -662,12 +701,12 @@ pub async fn download_attachment(query: web::Query<HashMap<String, String>>) -> 
                 break;
             }
         }
-        
+
         // 文件写入完成，刷新并更新缓存元数据
         if let Err(e) = file.flush().await {
             log::warn!("刷新缓存文件失败: {}", e);
         }
-        
+
         let cache = get_cache_manager().await;
         cache.set_file_cache(
             &url_for_cache,
@@ -690,11 +729,15 @@ pub async fn download_attachment(query: web::Query<HashMap<String, String>>) -> 
         }
     });
 
+    // 应用下载速度限制
+    let rate_limited_stream = rate_limit_manager.limit_speed(stream);
+    let final_stream = rate_limited_stream.into_stream();
+
     Ok(HttpResponse::Ok()
         .content_type(content_type.clone())
         .append_header((
             "Content-Disposition",
             format!("attachment; filename=\"{}\"", filename)
         ))
-        .streaming(stream))
+        .streaming(final_stream))
 }

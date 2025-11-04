@@ -16,6 +16,16 @@ services:
       - CACHE_FILE=/app/data/cache.json
       # GitHub Token（可选，用于提高 API 速率限制）
       # - GITHUB_TOKEN=your_github_token_here
+      # 下载限流配置
+      # 允许最多 20 个并发下载
+      - MAX_CONCURRENT_DOWNLOADS=20
+      # 限制下载速度为 5mb/s
+      - DOWNLOAD_SPEED_LIMIT=5mb/s
+      # 或者使用字节数（5MB = 5 * 1024 * 1024）
+      # - DOWNLOAD_SPEED_LIMIT=5242880
+      # 限制每小时最多 200 次下载
+      - MAX_DOWNLOADS_PER_WINDOW=200
+      - RATE_LIMIT_WINDOW_SECS=3600
     volumes:
       # 持久化缓存数据
       - ./data:/app/data/

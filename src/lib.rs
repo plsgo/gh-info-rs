@@ -2,6 +2,7 @@ pub mod cache;
 pub mod error;
 pub mod handlers;
 pub mod models;
+pub mod rate_limit;
 
 use utoipa::OpenApi;
 use crate::models::{

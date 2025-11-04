@@ -21,9 +21,17 @@ impl ResponseError for AppError {
                 "error": self.to_string()
             })),
             AppError::BadRequest(msg) => {
-                HttpResponse::BadRequest().json(serde_json::json!({
-                    "error": msg
-                }))
+                // 检查是否是限流错误（包含"请求过于频繁"或"并发下载数已达上限"）
+                if msg.contains("请求过于频繁") || msg.contains("并发下载数已达上限") {
+                    HttpResponse::TooManyRequests().json(serde_json::json!({
+                        "error": msg,
+                        "retry_after": 60  // 建议 60 秒后重试
+                    }))
+                } else {
+                    HttpResponse::BadRequest().json(serde_json::json!({
+                        "error": msg
+                    }))
+                }
             }
             AppError::ApiError(msg) => {
                 HttpResponse::BadGateway().json(serde_json::json!({

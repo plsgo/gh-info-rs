@@ -1,5 +1,6 @@
 use actix_web::{App, HttpServer};
 use gh_info_rs::cache::get_cache_manager;
+use gh_info_rs::rate_limit::get_rate_limit_manager;
 use gh_info_rs::handlers::{
     batch_get_repos, batch_get_repos_map, download_attachment, get_latest_release, get_releases, get_repo_info,
     health, health_check,
@@ -16,12 +17,12 @@ async fn main() -> std::io::Result<()> {
     let log_level = std::env::var("LOG_LEVEL")
         .or_else(|_| std::env::var("RUST_LOG"))
         .unwrap_or_else(|_| "info".to_string());
-    
+
     // 创建自定义环境变量配置，优先使用 LOG_LEVEL，如果没有则使用 RUST_LOG
     let env = env_logger::Env::default()
         .filter_or("RUST_LOG", &log_level);
     env_logger::Builder::from_env(env).init();
-    
+
     // 从环境变量获取绑定地址，默认为 0.0.0.0:8080（Docker 友好）
     let bind_addr = std::env::var("BIND_ADDRESS").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
 
@@ -43,6 +44,11 @@ async fn main() -> std::io::Result<()> {
     log::info!("正在初始化缓存管理器...");
     get_cache_manager().await;
     log::info!("缓存管理器初始化完成");
+
+    // 初始化限流管理器
+    log::info!("正在初始化限流管理器...");
+    get_rate_limit_manager().await;
+    log::info!("限流管理器初始化完成");
 
     HttpServer::new(|| {
         App::new()

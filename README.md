@@ -9,6 +9,7 @@
 - 💾 **智能缓存**：内置缓存机制，减少对 GitHub API 的请求
 - 🔧 **灵活配置**：支持自定义字段选择，按需获取数据
 - 🐳 **Docker 支持**：提供 Docker 镜像，便于部署
+- 🛡️ **下载限流**：支持下载速度限制、并发限制和频率限制，防止流量盗刷
 
 ## API 端点
 
@@ -383,12 +384,68 @@ docker-compose up
 
 ## 环境变量配置
 
+### 基础配置
+
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
 | `BIND_ADDRESS` | 服务绑定地址 | `0.0.0.0:8080` |
 | `GITHUB_TOKEN` | GitHub API Token（可选，用于提高 API 速率限制） | 无 |
 | `LOG_LEVEL` | 日志级别（debug, info, warn, error） | `info` |
 | `RUST_LOG` | 日志级别（兼容旧版本配置） | `info` |
+
+### 缓存配置
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `CACHE_ENABLED` | 是否启用缓存 | `true` |
+| `CACHE_TTL_SECONDS` | 缓存过期时间（秒） | `3600` |
+| `CACHE_FILE` | 缓存文件路径 | `cache.json` |
+| `FILE_CACHE_DIR` | 文件缓存目录（可选，默认根据 CACHE_FILE 自动设置） | 自动 |
+
+### 下载限流配置
+
+为了防止流量盗刷，下载功能支持以下限流策略：
+
+| 变量名 | 说明 | 默认值 | 示例 |
+|--------|------|--------|------|
+| `MAX_CONCURRENT_DOWNLOADS` | 最大并发下载数 | `10` | `20` |
+| `DOWNLOAD_SPEED_LIMIT` | 下载速度限制（字节/秒），支持 `MB/s` 或 `KB/s` 单位 | `10MB/s` | `5MB/s` 或 `10240000` |
+| `MAX_DOWNLOADS_PER_WINDOW` | 每个时间窗口内的最大下载次数 | `100` | `200` |
+| `RATE_LIMIT_WINDOW_SECS` | 限流时间窗口大小（秒） | `60` | `300` |
+
+**限流说明：**
+- **并发限制**：限制同时进行的下载数量，超过限制的请求会等待或返回错误
+- **速度限制**：限制每个下载的传输速度，防止单次下载占用过多带宽
+- **频率限制**：按 IP 地址限制每个时间窗口内的下载次数，防止恶意刷流量
+
+**配置示例：**
+```bash
+# 允许最多 20 个并发下载
+MAX_CONCURRENT_DOWNLOADS=20
+
+# 限制下载速度为 5MB/s
+DOWNLOAD_SPEED_LIMIT=5mb/s
+
+# 或者使用字节数（5MB = 5 * 1024 * 1024）
+DOWNLOAD_SPEED_LIMIT=5242880
+
+# 限制每分钟最多 50 次下载
+MAX_DOWNLOADS_PER_WINDOW=50
+RATE_LIMIT_WINDOW_SECS=60
+
+# 限制每小时最多 200 次下载
+MAX_DOWNLOADS_PER_WINDOW=200
+RATE_LIMIT_WINDOW_SECS=3600
+```
+
+**限流错误响应：**
+当触发限流时，API 会返回 `429 Too Many Requests` 状态码：
+```json
+{
+  "error": "请求过于频繁：在 60 秒内最多允许 100 次下载",
+  "retry_after": 60
+}
+```
 
 **示例：**
 ```bash
