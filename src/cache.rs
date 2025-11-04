@@ -65,6 +65,7 @@ pub struct FileCacheMetadata {
     pub original_filename: String,
     pub content_type: Option<String>,
     pub expires_at: u64,
+    pub last_accessed_at: u64, // 最后访问时间（Unix 时间戳，秒）
 }
 
 // 缓存管理器
@@ -78,6 +79,8 @@ pub struct CacheManager {
     persistent_store: Arc<RwLock<PersistentCache>>,
     cache_file_path: PathBuf,
     file_cache_dir: PathBuf,
+    // 文件路径到缓存键的映射（用于清理时查找）
+    file_path_to_key: Arc<RwLock<HashMap<PathBuf, CacheKey>>>,
 }
 
 impl CacheManager {
@@ -148,6 +151,7 @@ impl CacheManager {
             persistent_store: persistent_store.clone(),
             cache_file_path: cache_file_path.clone(),
             file_cache_dir: file_cache_dir.clone(),
+            file_path_to_key: Arc::new(RwLock::new(HashMap::new())),
         };
 
         if config.enabled {
@@ -425,7 +429,7 @@ impl CacheManager {
             return None;
         }
         let key = Self::file_cache_key(url);
-        if let Some(metadata) = self.file_cache.get(&key).await {
+        if let Some(mut metadata) = self.file_cache.get(&key).await {
             // 检查文件是否仍然存在
             if metadata.file_path.exists() {
                 // 检查是否过期
@@ -434,6 +438,12 @@ impl CacheManager {
                     .unwrap()
                     .as_secs();
                 if metadata.expires_at > now {
+                    // 更新访问时间
+                    metadata.last_accessed_at = now;
+                    // 更新缓存中的访问时间
+                    let key_clone = key.clone();
+                    let metadata_clone = metadata.clone();
+                    self.file_cache.insert(key_clone, metadata_clone).await;
                     return Some(metadata);
                 }
             }
@@ -451,11 +461,11 @@ impl CacheManager {
     ) {
         if self.is_enabled() {
             let key = Self::file_cache_key(url);
-            let expires_at = SystemTime::now()
+            let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_secs()
-                + self.config.ttl_seconds;
+                .as_secs();
+            let expires_at = now + self.config.ttl_seconds;
             
             let metadata = FileCacheMetadata {
                 url: url.to_string(),
@@ -463,16 +473,97 @@ impl CacheManager {
                 original_filename,
                 content_type,
                 expires_at,
+                last_accessed_at: now, // 设置初始访问时间为当前时间
             };
             
-            self.file_cache.insert(key, metadata.clone()).await;
+            self.file_cache.insert(key.clone(), metadata.clone()).await;
+            
+            // 更新文件路径到缓存键的映射
+            let mut mapping = self.file_path_to_key.write().await;
+            mapping.insert(file_path.clone(), key);
+            drop(mapping);
+            
             log::debug!("文件已缓存: {} -> {:?}", url, file_path);
+            
+            // 清理旧文件，保留最常访问的50个
+            self.cleanup_file_cache(50).await;
         }
     }
 
     // 获取文件缓存目录
     pub fn get_file_cache_dir(&self) -> &PathBuf {
         &self.file_cache_dir
+    }
+
+    // 清理文件缓存，使用 LRV (Least Recently Visited) 算法保留最常访问的 N 个文件
+    pub async fn cleanup_file_cache(&self, max_files: usize) {
+        if !self.is_enabled() {
+            return;
+        }
+
+        // 收集所有有效的文件缓存元数据
+        let mut file_metadatas: Vec<(PathBuf, FileCacheMetadata)> = Vec::new();
+        let mapping = self.file_path_to_key.read().await;
+
+        // 扫描文件缓存目录，收集所有文件的元数据
+        match std::fs::read_dir(&self.file_cache_dir) {
+            Ok(entries) => {
+                for entry in entries.flatten() {
+                    let file_path = entry.path();
+                    if file_path.is_file() {
+                        // 通过文件路径查找对应的缓存键
+                        if let Some(cache_key) = mapping.get(&file_path) {
+                            // 从缓存中获取元数据
+                            if let Some(metadata) = self.file_cache.get(cache_key).await {
+                                // 检查文件是否仍然存在且未过期
+                                let now = SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_secs();
+                                if metadata.file_path.exists() && metadata.expires_at > now {
+                                    file_metadatas.push((file_path.clone(), metadata));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("无法读取文件缓存目录: {}", e);
+                return;
+            }
+        }
+
+        drop(mapping);
+
+        // 按访问时间排序（最近访问的在前）
+        file_metadatas.sort_by(|a, b| b.1.last_accessed_at.cmp(&a.1.last_accessed_at));
+
+        // 如果文件数量超过限制，删除最旧的文件
+        if file_metadatas.len() > max_files {
+            let files_to_delete = &file_metadatas[max_files..];
+            let mut deleted_count = 0;
+            let mut mapping = self.file_path_to_key.write().await;
+            
+            for (file_path, metadata) in files_to_delete {
+                // 删除文件
+                if let Err(e) = std::fs::remove_file(file_path) {
+                    log::warn!("无法删除缓存文件 {:?}: {}", file_path, e);
+                } else {
+                    deleted_count += 1;
+                    log::debug!("已删除缓存文件: {:?} (URL: {})", file_path, metadata.url);
+                    
+                    // 从映射中删除
+                    mapping.remove(file_path);
+                    
+                    // 从缓存中删除（通过缓存键）
+                    let cache_key = Self::file_cache_key(&metadata.url);
+                    self.file_cache.invalidate(&cache_key).await;
+                }
+            }
+            
+            log::info!("文件缓存清理完成: 保留 {} 个文件，删除 {} 个文件", max_files, deleted_count);
+        }
     }
 }
 
