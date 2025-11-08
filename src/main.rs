@@ -2,7 +2,8 @@ use actix_web::{App, HttpServer};
 use gh_info_rs::cache::get_cache_manager;
 use gh_info_rs::rate_limit::get_rate_limit_manager;
 use gh_info_rs::handlers::{
-    batch_get_repos, batch_get_repos_map, download_attachment, get_latest_release, get_latest_release_pre, get_releases, get_repo_info,
+    batch_get_repos, batch_get_repos_map, download_attachment, get_latest_release, get_latest_release_pre, 
+    get_latest_release_pre_tauri, get_latest_release_tauri, get_releases, get_repo_info,
     health, health_check,
 };
 use gh_info_rs::ApiDoc;
@@ -35,6 +36,8 @@ async fn main() -> std::io::Result<()> {
     println!("   GET  /repos/{{owner}}/{{repo}}/releases     - 获取所有 releases");
     println!("   GET  /repos/{{owner}}/{{repo}}/releases/latest - 获取最新 release");
     println!("   GET  /repos/{{owner}}/{{repo}}/releases/latest/pre - 获取最新 release（包括 pre-release）");
+    println!("   GET  /repos/{{owner}}/{{repo}}/releases/latest/tauri - 获取最新 release 的 latest.json 文件内容");
+    println!("   GET  /repos/{{owner}}/{{repo}}/releases/latest/pre/tauri - 获取最新 release（包括 pre-release）的 latest.json 文件内容");
     println!("   POST /repos/batch                          - 批量获取多个仓库信息（数组格式）");
     println!("   POST /repos/batch/map                      - 批量获取多个仓库信息（Map 格式）");
     println!("   GET  /download?url={{url}}                 - 下载附件文件（支持缓存）");
@@ -63,6 +66,8 @@ async fn main() -> std::io::Result<()> {
             .service(get_releases)
             .service(get_latest_release)
             .service(get_latest_release_pre)
+            .service(get_latest_release_tauri)
+            .service(get_latest_release_pre_tauri)
             .service(batch_get_repos)
             .service(batch_get_repos_map)
             .service(download_attachment)

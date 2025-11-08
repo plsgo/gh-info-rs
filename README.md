@@ -10,6 +10,7 @@
 - 🔧 **灵活配置**：支持自定义字段选择，按需获取数据
 - 🐳 **Docker 支持**：提供 Docker 镜像，便于部署
 - 🛡️ **下载限流**：支持下载速度限制、并发限制和频率限制，防止流量盗刷
+- 🎯 **Tauri 支持**：专门支持 Tauri v2 应用的自动更新功能，可直接获取 `latest.json` 文件内容
 
 ## API 端点
 
@@ -118,6 +119,78 @@ curl http://localhost:8080/repos/rust-lang/rust/releases/latest/pre
 ```
 
 **说明：** 该接口会获取所有 releases（包括 pre-release），然后返回最新的一个。如果仓库只有正式版本，则返回最新的正式版本。
+
+#### 5. 获取最新 Release 的 Tauri latest.json 文件
+
+```bash
+GET /repos/{owner}/{repo}/releases/latest/tauri
+```
+
+**示例请求：**
+```bash
+curl http://localhost:8080/repos/owner/repo/releases/latest/tauri
+```
+
+**响应示例：**
+```json
+{
+  "version": "1.0.0",
+  "notes": "Release notes...",
+  "pub_date": "2024-01-01T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "...",
+      "url": "https://github.com/owner/repo/releases/download/1.0.0/app-x64-setup.exe"
+    },
+    "darwin-x86_64": {
+      "signature": "...",
+      "url": "https://github.com/owner/repo/releases/download/1.0.0/app-x64.app.tar.gz"
+    },
+    "linux-x86_64": {
+      "signature": "...",
+      "url": "https://github.com/owner/repo/releases/download/1.0.0/app-x64.AppImage"
+    }
+  }
+}
+```
+
+**说明：** 
+- 该接口专门用于 Tauri v2 应用的自动更新功能
+- 从最新 release 的 attachments 中查找 `latest.json` 文件并返回其内容
+- 返回的 JSON 格式符合 Tauri v2 的 `latest.json` 规范
+- 如果 release 中没有 `latest.json` 文件，将返回 404 错误
+
+#### 6. 获取最新 Release（包括 Pre-release）的 Tauri latest.json 文件
+
+```bash
+GET /repos/{owner}/{repo}/releases/latest/pre/tauri
+```
+
+**示例请求：**
+```bash
+curl http://localhost:8080/repos/owner/repo/releases/latest/pre/tauri
+```
+
+**响应示例：**
+```json
+{
+  "version": "1.1.0-beta.1",
+  "notes": "Beta release notes...",
+  "pub_date": "2024-01-15T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "...",
+      "url": "https://github.com/owner/repo/releases/download/1.1.0-beta.1/app-x64-setup.exe"
+    }
+  }
+}
+```
+
+**说明：** 
+- 该接口会获取所有 releases（包括 pre-release），然后返回最新的一个 release 的 `latest.json` 文件内容
+- 适用于需要获取 beta 或 alpha 版本的 Tauri 应用
+- 如果仓库只有正式版本，则返回最新正式版本的 `latest.json` 文件
+- 如果 release 中没有 `latest.json` 文件，将返回 404 错误
 
 ### 批量查询
 
@@ -308,7 +381,44 @@ curl -X POST http://localhost:8080/repos/batch \
 
 **说明：** `attachments` 字段是一个字符串数组，每个元素是附件的下载链接 URL。
 
-### 场景 3：获取最新版本号 + 附件链接 + 更新日志
+### 场景 3：Tauri 应用自动更新
+
+对于使用 Tauri v2 构建的应用，可以使用专门的 Tauri 端点来获取 `latest.json` 文件，用于实现自动更新功能。
+
+**获取正式版本：**
+```bash
+curl http://localhost:8080/repos/owner/repo/releases/latest/tauri
+```
+
+**获取 Beta 版本（包括 pre-release）：**
+```bash
+curl http://localhost:8080/repos/owner/repo/releases/latest/pre/tauri
+```
+
+**在 Tauri 应用中使用：**
+```typescript
+// 在 Tauri 应用中配置更新服务器
+import { check } from '@tauri-apps/plugin-updater';
+
+const updater = await check({
+  endpoint: 'http://your-server.com/repos/owner/repo/releases/latest/tauri',
+  // 或者使用 pre-release 版本
+  // endpoint: 'http://your-server.com/repos/owner/repo/releases/latest/pre/tauri',
+});
+
+if (updater?.available) {
+  await updater.downloadAndInstall();
+  await updater.restart();
+}
+```
+
+**说明：**
+- 端点会从 release 的 attachments 中自动查找 `latest.json` 文件
+- 返回的 JSON 格式完全符合 Tauri v2 的 `latest.json` 规范
+- 支持正式版本和 pre-release 版本查询
+- 如果 release 中没有 `latest.json` 文件，将返回 404 错误
+
+### 场景 4：获取最新版本号 + 附件链接 + 更新日志
 
 **请求示例：**
 ```bash

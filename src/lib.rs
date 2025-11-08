@@ -18,6 +18,8 @@ use crate::models::{
         handlers::get_releases,
         handlers::get_latest_release,
         handlers::get_latest_release_pre,
+        handlers::get_latest_release_tauri,
+        handlers::get_latest_release_pre_tauri,
         handlers::batch_get_repos,
         handlers::batch_get_repos_map,
         handlers::download_attachment,

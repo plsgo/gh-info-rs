@@ -293,6 +293,65 @@ pub async fn fetch_latest_release_pre(owner: &str, repo: &str) -> Result<LatestR
     Ok(latest_release)
 }
 
+// 从 release 的 attachments 中查找 latest.json 文件 URL
+fn find_latest_json_url(attachments: &[String]) -> Option<&String> {
+    attachments
+        .iter()
+        .find(|url| {
+            url.ends_with("latest.json") || 
+            url.contains("/latest.json") ||
+            url.split('/').last().map(|s| s == "latest.json").unwrap_or(false)
+        })
+}
+
+// 获取 latest.json 文件内容
+async fn fetch_latest_json(url: &str) -> Result<serde_json::Value, AppError> {
+    let client = create_client();
+    
+    let mut request = client
+        .get(url)
+        .header("User-Agent", "gh-info-rs")
+        .header("Accept", "application/json");
+
+    if let Some(token) = get_github_token() {
+        request = request.header("Authorization", format!("Bearer {}", token));
+    }
+
+    let response = request.send().await?;
+
+    if !response.status().is_success() {
+        return Err(AppError::ApiError(format!(
+            "下载 latest.json 失败，状态码: {}",
+            response.status()
+        )));
+    }
+
+    let json_value: serde_json::Value = response.json().await?;
+    Ok(json_value)
+}
+
+// 获取最新 release 的 latest.json 文件内容
+pub async fn fetch_latest_release_tauri_json(owner: &str, repo: &str) -> Result<serde_json::Value, AppError> {
+    let latest_release = fetch_latest_release(owner, repo).await?;
+    
+    let latest_json_url = find_latest_json_url(&latest_release.attachments)
+        .ok_or_else(|| AppError::NotFound)?;
+    
+    log::debug!("找到 latest.json URL: {}", latest_json_url);
+    fetch_latest_json(latest_json_url).await
+}
+
+// 获取最新 release（包括 pre-release）的 latest.json 文件内容
+pub async fn fetch_latest_release_pre_tauri_json(owner: &str, repo: &str) -> Result<serde_json::Value, AppError> {
+    let latest_release = fetch_latest_release_pre(owner, repo).await?;
+    
+    let latest_json_url = find_latest_json_url(&latest_release.attachments)
+        .ok_or_else(|| AppError::NotFound)?;
+    
+    log::debug!("找到 latest.json URL: {}", latest_json_url);
+    fetch_latest_json(latest_json_url).await
+}
+
 // API 端点：GET / - 健康检查和基本信息
 #[utoipa::path(
     get,
@@ -421,6 +480,54 @@ pub async fn get_latest_release_pre(
     log::info!("请求: GET /repos/{}/{}/releases/latest/pre", owner, repo);
     let release = fetch_latest_release_pre(&owner, &repo).await?;
     Ok(HttpResponse::Ok().json(release))
+}
+
+// API 端点：GET /repos/{owner}/{repo}/releases/latest/tauri
+#[utoipa::path(
+    get,
+    path = "/repos/{owner}/{repo}/releases/latest/tauri",
+    tag = "repos",
+    params(
+        ("owner" = String, Path, description = "仓库所有者"),
+        ("repo" = String, Path, description = "仓库名称")
+    ),
+    responses(
+        (status = 200, description = "成功获取 latest.json 文件内容", body = serde_json::Value),
+        (status = 404, description = "仓库不存在、没有 releases 或没有 latest.json 文件")
+    )
+)]
+#[get("/repos/{owner}/{repo}/releases/latest/tauri")]
+pub async fn get_latest_release_tauri(
+    path: web::Path<(String, String)>,
+) -> Result<impl Responder, AppError> {
+    let (owner, repo) = path.into_inner();
+    log::info!("请求: GET /repos/{}/{}/releases/latest/tauri", owner, repo);
+    let json_content = fetch_latest_release_tauri_json(&owner, &repo).await?;
+    Ok(HttpResponse::Ok().json(json_content))
+}
+
+// API 端点：GET /repos/{owner}/{repo}/releases/latest/pre/tauri
+#[utoipa::path(
+    get,
+    path = "/repos/{owner}/{repo}/releases/latest/pre/tauri",
+    tag = "repos",
+    params(
+        ("owner" = String, Path, description = "仓库所有者"),
+        ("repo" = String, Path, description = "仓库名称")
+    ),
+    responses(
+        (status = 200, description = "成功获取 latest.json 文件内容（包括 pre-release）", body = serde_json::Value),
+        (status = 404, description = "仓库不存在、没有 releases 或没有 latest.json 文件")
+    )
+)]
+#[get("/repos/{owner}/{repo}/releases/latest/pre/tauri")]
+pub async fn get_latest_release_pre_tauri(
+    path: web::Path<(String, String)>,
+) -> Result<impl Responder, AppError> {
+    let (owner, repo) = path.into_inner();
+    log::info!("请求: GET /repos/{}/{}/releases/latest/pre/tauri", owner, repo);
+    let json_content = fetch_latest_release_pre_tauri_json(&owner, &repo).await?;
+    Ok(HttpResponse::Ok().json(json_content))
 }
 
 // 解析仓库字符串 "owner/repo" 为 (owner, repo)
