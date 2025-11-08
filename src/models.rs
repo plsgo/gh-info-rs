@@ -43,6 +43,7 @@ pub struct GithubRelease {
     pub body: Option<String>,
     #[serde(rename = "published_at")]
     pub published_at: String,
+    pub prerelease: bool,
     pub assets: Vec<GithubAsset>,
 }
 
@@ -66,7 +67,8 @@ pub struct ReleaseInfo {
     pub name: Option<String>,
     pub changelog: Option<String>,
     pub published_at: String,
-    pub attachments: Vec<(String, String)>, // (名称, 下载链接)
+    pub prerelease: bool,
+    pub attachments: Vec<String>, // 附件下载链接
 }
 
 // 整理后的最新版本信息（用于 API 响应）
@@ -76,7 +78,8 @@ pub struct LatestReleaseInfo {
     pub latest_version: String,
     pub changelog: Option<String>,
     pub published_at: String,
-    pub attachments: Vec<(String, String)>,
+    pub prerelease: bool,
+    pub attachments: Vec<String>, // 附件下载链接
 }
 
 // 批量请求的数据结构
@@ -146,6 +149,7 @@ mod tests {
             "name": "Release 1.0.0",
             "body": "Changelog",
             "published_at": "2024-01-01T00:00:00Z",
+            "prerelease": false,
             "assets": [
                 {
                     "name": "file.zip",
@@ -157,6 +161,7 @@ mod tests {
         let release: GithubRelease = serde_json::from_str(json).unwrap();
         assert_eq!(release.tag_name, "v1.0.0");
         assert_eq!(release.name, Some("Release 1.0.0".to_string()));
+        assert_eq!(release.prerelease, false);
         assert_eq!(release.assets.len(), 1);
         assert_eq!(release.assets[0].name, "file.zip");
     }

@@ -131,10 +131,11 @@ pub async fn fetch_releases(owner: &str, repo: &str) -> Result<Vec<ReleaseInfo>,
             name: r.name,
             changelog: r.body,
             published_at: r.published_at,
+            prerelease: r.prerelease,
             attachments: r
                 .assets
                 .into_iter()
-                .map(|a| (a.name, a.download_url))
+                .map(|a| a.download_url)
                 .collect(),
         })
         .collect();
@@ -192,10 +193,11 @@ pub async fn fetch_latest_release(owner: &str, repo: &str) -> Result<LatestRelea
         latest_version: release.tag_name,
         changelog: release.body,
         published_at: release.published_at,
+        prerelease: release.prerelease,
         attachments: release
             .assets
             .into_iter()
-            .map(|a| (a.name, a.download_url))
+            .map(|a| a.download_url)
             .collect(),
     };
 
@@ -204,6 +206,89 @@ pub async fn fetch_latest_release(owner: &str, repo: &str) -> Result<LatestRelea
         .set_latest_release(owner, repo, latest_release.clone())
         .await;
     log::debug!("成功获取并缓存最新 release: {}/{} (版本: {})", owner, repo, latest_release.latest_version);
+
+    Ok(latest_release)
+}
+
+// 获取最新 release（包括 pre-release）
+pub async fn fetch_latest_release_pre(owner: &str, repo: &str) -> Result<LatestReleaseInfo, AppError> {
+    let cache = get_cache_manager().await;
+
+    // 先尝试从缓存获取所有releases
+    let releases = if let Some(cached_releases) = cache.get_releases(owner, repo).await {
+        log::debug!("从缓存获取 releases: {}/{} (共 {} 个)", owner, repo, cached_releases.len());
+        cached_releases
+    } else {
+        // 缓存未命中，从 API 获取
+        log::debug!("从 GitHub API 获取 releases: {}/{}", owner, repo);
+        let client = create_client();
+        let api_url = format!("https://api.github.com/repos/{}/{}/releases", owner, repo);
+
+        let mut request = client
+            .get(&api_url)
+            .header("User-Agent", "gh-info-rs")
+            .header("Accept", "application/vnd.github.v3+json");
+
+        if let Some(token) = get_github_token() {
+            request = request.header("Authorization", format!("Bearer {}", token));
+        }
+
+        let response = request.send().await?;
+
+        if !response.status().is_success() {
+            if response.status().as_u16() == 404 {
+                return Err(AppError::NotFound);
+            }
+            return Err(AppError::ApiError(format!(
+                "GitHub API 返回状态码: {}",
+                response.status()
+            )));
+        }
+
+        let github_releases: Vec<GithubRelease> = response.json().await?;
+
+        let release_infos: Vec<ReleaseInfo> = github_releases
+            .into_iter()
+            .map(|r| ReleaseInfo {
+                tag_name: r.tag_name,
+                name: r.name,
+                changelog: r.body,
+                published_at: r.published_at,
+                prerelease: r.prerelease,
+                attachments: r
+                    .assets
+                    .into_iter()
+                    .map(|a| a.download_url)
+                    .collect(),
+            })
+            .collect();
+
+        // 存入缓存
+        cache.set_releases(owner, repo, release_infos.clone()).await;
+        log::debug!("成功获取并缓存 releases: {}/{} (共 {} 个)", owner, repo, release_infos.len());
+
+        release_infos
+    };
+
+    // 找到最新的release（包括pre-release）
+    if releases.is_empty() {
+        return Err(AppError::NotFound);
+    }
+
+    // 按发布时间排序，最新的在前
+    let latest = releases
+        .into_iter()
+        .max_by_key(|r| r.published_at.clone())
+        .unwrap();
+
+    let latest_release = LatestReleaseInfo {
+        repo: format!("{}/{}", owner, repo),
+        latest_version: latest.tag_name,
+        changelog: latest.changelog,
+        published_at: latest.published_at,
+        prerelease: latest.prerelease,
+        attachments: latest.attachments,
+    };
 
     Ok(latest_release)
 }
@@ -311,6 +396,30 @@ pub async fn get_latest_release(
     let (owner, repo) = path.into_inner();
     log::info!("请求: GET /repos/{}/{}/releases/latest", owner, repo);
     let release = fetch_latest_release(&owner, &repo).await?;
+    Ok(HttpResponse::Ok().json(release))
+}
+
+// API 端点：GET /repos/{owner}/{repo}/releases/latest/pre
+#[utoipa::path(
+    get,
+    path = "/repos/{owner}/{repo}/releases/latest/pre",
+    tag = "repos",
+    params(
+        ("owner" = String, Path, description = "仓库所有者"),
+        ("repo" = String, Path, description = "仓库名称")
+    ),
+    responses(
+        (status = 200, description = "成功获取最新 release（包括 pre-release）", body = LatestReleaseInfo),
+        (status = 404, description = "仓库不存在或没有 releases")
+    )
+)]
+#[get("/repos/{owner}/{repo}/releases/latest/pre")]
+pub async fn get_latest_release_pre(
+    path: web::Path<(String, String)>,
+) -> Result<impl Responder, AppError> {
+    let (owner, repo) = path.into_inner();
+    log::info!("请求: GET /repos/{}/{}/releases/latest/pre", owner, repo);
+    let release = fetch_latest_release_pre(&owner, &repo).await?;
     Ok(HttpResponse::Ok().json(release))
 }
 
