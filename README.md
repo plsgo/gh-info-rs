@@ -59,8 +59,9 @@ curl http://localhost:8080/repos/rust-lang/rust/releases
     "name": "1.75.0",
     "changelog": "Release notes...",
     "published_at": "2024-01-01T00:00:00Z",
+    "prerelease": false,
     "attachments": [
-      ["rust-1.75.0-x86_64-unknown-linux-gnu.tar.gz", "https://github.com/.../download/..."]
+      "https://github.com/rust-lang/rust/releases/download/1.75.0/rust-1.75.0-x86_64-unknown-linux-gnu.tar.gz"
     ]
   }
 ]
@@ -84,11 +85,39 @@ curl http://localhost:8080/repos/rust-lang/rust/releases/latest
   "latest_version": "1.75.0",
   "changelog": "Release notes...",
   "published_at": "2024-01-01T00:00:00Z",
+  "prerelease": false,
   "attachments": [
-    ["rust-1.75.0-x86_64-unknown-linux-gnu.tar.gz", "https://github.com/.../download/..."]
+    "https://github.com/rust-lang/rust/releases/download/1.75.0/rust-1.75.0-x86_64-unknown-linux-gnu.tar.gz"
   ]
 }
 ```
+
+#### 4. 获取最新 Release（包括 Pre-release）
+
+```bash
+GET /repos/{owner}/{repo}/releases/latest/pre
+```
+
+**示例请求：**
+```bash
+curl http://localhost:8080/repos/rust-lang/rust/releases/latest/pre
+```
+
+**响应示例：**
+```json
+{
+  "repo": "rust-lang/rust",
+  "latest_version": "1.76.0-beta.1",
+  "changelog": "Beta release notes...",
+  "published_at": "2024-01-15T00:00:00Z",
+  "prerelease": true,
+  "attachments": [
+    "https://github.com/rust-lang/rust/releases/download/1.76.0-beta.1/rust-1.76.0-beta.1-x86_64-unknown-linux-gnu.tar.gz"
+  ]
+}
+```
+
+**说明：** 该接口会获取所有 releases（包括 pre-release），然后返回最新的一个。如果仓库只有正式版本，则返回最新的正式版本。
 
 ### 批量查询
 
@@ -149,6 +178,7 @@ curl -X POST http://localhost:8080/repos/batch \
         "latest_version": "1.75.0",
         "changelog": null,
         "published_at": "2024-01-01T00:00:00Z",
+        "prerelease": false,
         "attachments": []
       }
     },
@@ -160,6 +190,7 @@ curl -X POST http://localhost:8080/repos/batch \
         "latest_version": "1.85.0",
         "changelog": null,
         "published_at": "2024-01-15T00:00:00Z",
+        "prerelease": false,
         "attachments": []
       }
     },
@@ -171,6 +202,7 @@ curl -X POST http://localhost:8080/repos/batch \
         "latest_version": "18.2.0",
         "changelog": null,
         "published_at": "2024-01-10T00:00:00Z",
+        "prerelease": false,
         "attachments": []
       }
     }
@@ -200,6 +232,7 @@ curl -X POST http://localhost:8080/repos/batch/map \
         "latest_version": "1.75.0",
         "changelog": null,
         "published_at": "2024-01-01T00:00:00Z",
+        "prerelease": false,
         "attachments": []
       }
     },
@@ -211,6 +244,7 @@ curl -X POST http://localhost:8080/repos/batch/map \
         "latest_version": "1.85.0",
         "changelog": null,
         "published_at": "2024-01-15T00:00:00Z",
+        "prerelease": false,
         "attachments": []
       }
     }
@@ -246,9 +280,10 @@ curl -X POST http://localhost:8080/repos/batch \
         "latest_version": "1.75.0",
         "changelog": null,
         "published_at": "2024-01-01T00:00:00Z",
+        "prerelease": false,
         "attachments": [
-          ["rust-1.75.0-x86_64-unknown-linux-gnu.tar.gz", "https://github.com/rust-lang/rust/releases/download/1.75.0/rust-1.75.0-x86_64-unknown-linux-gnu.tar.gz"],
-          ["rust-1.75.0-x86_64-pc-windows-msvc.msi", "https://github.com/rust-lang/rust/releases/download/1.75.0/rust-1.75.0-x86_64-pc-windows-msvc.msi"]
+          "https://github.com/rust-lang/rust/releases/download/1.75.0/rust-1.75.0-x86_64-unknown-linux-gnu.tar.gz",
+          "https://github.com/rust-lang/rust/releases/download/1.75.0/rust-1.75.0-x86_64-pc-windows-msvc.msi"
         ]
       }
     },
@@ -260,9 +295,10 @@ curl -X POST http://localhost:8080/repos/batch \
         "latest_version": "1.85.0",
         "changelog": null,
         "published_at": "2024-01-15T00:00:00Z",
+        "prerelease": false,
         "attachments": [
-          ["VSCode-darwin-x64.zip", "https://github.com/microsoft/vscode/releases/download/1.85.0/VSCode-darwin-x64.zip"],
-          ["VSCodeUserSetup-x64-1.85.0.exe", "https://github.com/microsoft/vscode/releases/download/1.85.0/VSCodeUserSetup-x64-1.85.0.exe"]
+          "https://github.com/microsoft/vscode/releases/download/1.85.0/VSCode-darwin-x64.zip",
+          "https://github.com/microsoft/vscode/releases/download/1.85.0/VSCodeUserSetup-x64-1.85.0.exe"
         ]
       }
     }
@@ -270,7 +306,7 @@ curl -X POST http://localhost:8080/repos/batch \
 }
 ```
 
-**说明：** `attachments` 字段是一个数组，每个元素是 `[文件名, 下载链接]` 的元组。
+**说明：** `attachments` 字段是一个字符串数组，每个元素是附件的下载链接 URL。
 
 ### 场景 3：获取最新版本号 + 附件链接 + 更新日志
 
@@ -300,9 +336,10 @@ curl -X POST http://localhost:8080/repos/batch \
         "latest_version": "1.75.0",
         "changelog": "## Version 1.75.0\n\n### Added\n- New features...\n\n### Fixed\n- Bug fixes...",
         "published_at": "2024-01-01T00:00:00Z",
+        "prerelease": false,
         "attachments": [
-          ["rust-1.75.0-x86_64-unknown-linux-gnu.tar.gz", "https://github.com/rust-lang/rust/releases/download/1.75.0/rust-1.75.0-x86_64-unknown-linux-gnu.tar.gz"],
-          ["rust-1.75.0-x86_64-pc-windows-msvc.msi", "https://github.com/rust-lang/rust/releases/download/1.75.0/rust-1.75.0-x86_64-pc-windows-msvc.msi"]
+          "https://github.com/rust-lang/rust/releases/download/1.75.0/rust-1.75.0-x86_64-unknown-linux-gnu.tar.gz",
+          "https://github.com/rust-lang/rust/releases/download/1.75.0/rust-1.75.0-x86_64-pc-windows-msvc.msi"
         ]
       }
     },
@@ -314,9 +351,10 @@ curl -X POST http://localhost:8080/repos/batch \
         "latest_version": "1.85.0",
         "changelog": "## 1.85.0 Release Notes\n\n### New Features\n- Feature 1\n- Feature 2",
         "published_at": "2024-01-15T00:00:00Z",
+        "prerelease": false,
         "attachments": [
-          ["VSCode-darwin-x64.zip", "https://github.com/microsoft/vscode/releases/download/1.85.0/VSCode-darwin-x64.zip"],
-          ["VSCodeUserSetup-x64-1.85.0.exe", "https://github.com/microsoft/vscode/releases/download/1.85.0/VSCodeUserSetup-x64-1.85.0.exe"]
+          "https://github.com/microsoft/vscode/releases/download/1.85.0/VSCode-darwin-x64.zip",
+          "https://github.com/microsoft/vscode/releases/download/1.85.0/VSCodeUserSetup-x64-1.85.0.exe"
         ]
       }
     }
