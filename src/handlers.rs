@@ -493,7 +493,8 @@ pub async fn get_latest_release_pre(
     ),
     responses(
         (status = 200, description = "成功获取 latest.json 文件内容", body = serde_json::Value),
-        (status = 404, description = "仓库不存在、没有 releases 或没有 latest.json 文件")
+        (status = 204, description = "没有可用的更新（符合 Tauri 更新器规范）"),
+        (status = 404, description = "仓库不存在")
     )
 )]
 #[get("/repos/{owner}/{repo}/releases/latest/tauri")]
@@ -502,8 +503,17 @@ pub async fn get_latest_release_tauri(
 ) -> Result<impl Responder, AppError> {
     let (owner, repo) = path.into_inner();
     log::info!("请求: GET /repos/{}/{}/releases/latest/tauri", owner, repo);
-    let json_content = fetch_latest_release_tauri_json(&owner, &repo).await?;
-    Ok(HttpResponse::Ok().json(json_content))
+    
+    // 根据 Tauri 更新器规范，当没有更新时返回 204 No Content
+    match fetch_latest_release_tauri_json(&owner, &repo).await {
+        Ok(json_content) => Ok(HttpResponse::Ok().json(json_content)),
+        Err(AppError::NotFound) => {
+            // 没有 release 或没有 latest.json 文件时返回 204
+            log::debug!("没有可用的更新，返回 204 No Content");
+            Ok(HttpResponse::NoContent().finish())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 // API 端点：GET /repos/{owner}/{repo}/releases/latest/pre/tauri
@@ -517,7 +527,8 @@ pub async fn get_latest_release_tauri(
     ),
     responses(
         (status = 200, description = "成功获取 latest.json 文件内容（包括 pre-release）", body = serde_json::Value),
-        (status = 404, description = "仓库不存在、没有 releases 或没有 latest.json 文件")
+        (status = 204, description = "没有可用的更新（符合 Tauri 更新器规范）"),
+        (status = 404, description = "仓库不存在")
     )
 )]
 #[get("/repos/{owner}/{repo}/releases/latest/pre/tauri")]
@@ -526,8 +537,17 @@ pub async fn get_latest_release_pre_tauri(
 ) -> Result<impl Responder, AppError> {
     let (owner, repo) = path.into_inner();
     log::info!("请求: GET /repos/{}/{}/releases/latest/pre/tauri", owner, repo);
-    let json_content = fetch_latest_release_pre_tauri_json(&owner, &repo).await?;
-    Ok(HttpResponse::Ok().json(json_content))
+    
+    // 根据 Tauri 更新器规范，当没有更新时返回 204 No Content
+    match fetch_latest_release_pre_tauri_json(&owner, &repo).await {
+        Ok(json_content) => Ok(HttpResponse::Ok().json(json_content)),
+        Err(AppError::NotFound) => {
+            // 没有 release 或没有 latest.json 文件时返回 204
+            log::debug!("没有可用的更新，返回 204 No Content");
+            Ok(HttpResponse::NoContent().finish())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 // 解析仓库字符串 "owner/repo" 为 (owner, repo)

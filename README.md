@@ -154,11 +154,12 @@ curl http://localhost:8080/repos/owner/repo/releases/latest/tauri
 }
 ```
 
-**说明：** 
+**说明：**
 - 该接口专门用于 Tauri v2 应用的自动更新功能
 - 从最新 release 的 attachments 中查找 `latest.json` 文件并返回其内容
 - 返回的 JSON 格式符合 Tauri v2 的 `latest.json` 规范
-- 如果 release 中没有 `latest.json` 文件，将返回 404 错误
+- **符合 Tauri 更新器规范**：当没有 release 或没有 `latest.json` 文件时，返回 **204 No Content**（表示没有可用更新）
+- 只有当仓库不存在时，才会返回 404 错误
 
 #### 6. 获取最新 Release（包括 Pre-release）的 Tauri latest.json 文件
 
@@ -186,11 +187,12 @@ curl http://localhost:8080/repos/owner/repo/releases/latest/pre/tauri
 }
 ```
 
-**说明：** 
+**说明：**
 - 该接口会获取所有 releases（包括 pre-release），然后返回最新的一个 release 的 `latest.json` 文件内容
 - 适用于需要获取 beta 或 alpha 版本的 Tauri 应用
 - 如果仓库只有正式版本，则返回最新正式版本的 `latest.json` 文件
-- 如果 release 中没有 `latest.json` 文件，将返回 404 错误
+- **符合 Tauri 更新器规范**：当没有 release 或没有 `latest.json` 文件时，返回 **204 No Content**（表示没有可用更新）
+- 只有当仓库不存在时，才会返回 404 错误
 
 ### 批量查询
 
@@ -416,7 +418,9 @@ if (updater?.available) {
 - 端点会从 release 的 attachments 中自动查找 `latest.json` 文件
 - 返回的 JSON 格式完全符合 Tauri v2 的 `latest.json` 规范
 - 支持正式版本和 pre-release 版本查询
-- 如果 release 中没有 `latest.json` 文件，将返回 404 错误
+- **符合 Tauri 更新器规范**：当没有 release 或没有 `latest.json` 文件时，返回 **204 No Content**（表示没有可用更新），这是 Tauri 更新器推荐的做法
+- 只有当仓库不存在时，才会返回 404 错误
+- 参考：[Tauri 更新器官方文档](https://v2.tauri.org.cn/plugin/updater/)
 
 ### 场景 4：获取最新版本号 + 附件链接 + 更新日志
 
