@@ -1,11 +1,12 @@
+use actix_cors::Cors;
 use actix_web::{App, HttpServer};
 use gh_info_rs::cache::get_cache_manager;
-use gh_info_rs::rate_limit::get_rate_limit_manager;
 use gh_info_rs::handlers::{
-    batch_get_repos, batch_get_repos_map, download_attachment, get_latest_release, get_latest_release_pre, 
-    get_latest_release_pre_tauri, get_latest_release_tauri, get_releases, get_repo_info,
-    health, health_check,
+    batch_get_repos, batch_get_repos_map, download_attachment, get_latest_release,
+    get_latest_release_pre, get_latest_release_pre_tauri, get_latest_release_tauri, get_releases,
+    get_repo_info, health, health_check,
 };
+use gh_info_rs::rate_limit::get_rate_limit_manager;
 use gh_info_rs::ApiDoc;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -20,8 +21,7 @@ async fn main() -> std::io::Result<()> {
         .unwrap_or_else(|_| "info".to_string());
 
     // 创建自定义环境变量配置，优先使用 LOG_LEVEL，如果没有则使用 RUST_LOG
-    let env = env_logger::Env::default()
-        .filter_or("RUST_LOG", &log_level);
+    let env = env_logger::Env::default().filter_or("RUST_LOG", &log_level);
     env_logger::Builder::from_env(env).init();
 
     // 从环境变量获取绑定地址，默认为 0.0.0.0:8080（Docker 友好）
@@ -54,8 +54,48 @@ async fn main() -> std::io::Result<()> {
     get_rate_limit_manager().await;
     log::info!("限流管理器初始化完成");
 
-    HttpServer::new(|| {
+    // 配置 CORS
+    // 如果设置了 CORS_ALLOWED_ORIGINS 环境变量，则只允许指定的域（逗号分隔）
+    // 如果未设置，则允许所有来源
+    let cors_allowed_origins = std::env::var("CORS_ALLOWED_ORIGINS").ok();
+    let cors_origins_vec = cors_allowed_origins.as_ref().map(|origins| {
+        origins
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect::<Vec<String>>()
+    });
+
+    if let Some(ref origins) = cors_allowed_origins {
+        log::info!("CORS 配置: 允许的域 = {}", origins);
+    } else {
+        log::info!("CORS 配置: 允许所有来源");
+    }
+
+    HttpServer::new(move || {
+        let cors = if let Some(ref origins_vec) = cors_origins_vec {
+            let mut cors_builder = Cors::default();
+            for origin in origins_vec {
+                cors_builder = cors_builder.allowed_origin(origin.as_str());
+            }
+            cors_builder
+                .allowed_methods(vec!["GET", "POST", "OPTIONS"])
+                .allowed_headers(vec![
+                    actix_web::http::header::CONTENT_TYPE,
+                    actix_web::http::header::AUTHORIZATION,
+                ])
+                .max_age(3600)
+        } else {
+            Cors::permissive()
+                .allowed_methods(vec!["GET", "POST", "OPTIONS"])
+                .allowed_headers(vec![
+                    actix_web::http::header::CONTENT_TYPE,
+                    actix_web::http::header::AUTHORIZATION,
+                ])
+                .max_age(3600)
+        };
+
         App::new()
+            .wrap(cors)
             .service(
                 SwaggerUi::new("/swagger-ui/{_:.*}")
                     .url("/api-doc/openapi.json", ApiDoc::openapi()),

@@ -19,6 +19,10 @@ services:
       # 下载限流配置
       # 允许最多 10 个并发下载
       - MAX_CONCURRENT_DOWNLOADS=10
+      # CORS 配置（可选）
+      # 如果未设置，则允许所有来源
+      # 如果设置，则只允许指定的域（逗号分隔），例如：
+      # - CORS_ALLOWED_ORIGINS=https://example.com,https://www.example.com
     volumes:
       # 持久化缓存数据
       - ./data:/app/data/

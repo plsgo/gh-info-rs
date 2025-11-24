@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4.0"                                   # Actix-Web 核心
+actix-cors = "0.7"                                  # CORS 支持
 actix-rt = "2.0"                                    # Actix 运行时
 reqwest = { version = "0.12.24", features = ["json", "rustls-tls", "stream"], default-features = false } # HTTP 客户端（使用 rustls 替代 OpenSSL）
 tokio = { version = "1.0", features = ["full"] }    # Actix Web 依赖的异步运行时
