@@ -17,7 +17,7 @@ services:
       # - CORS_ALLOWED_ORIGINS=https://example.com,https://www.example.com
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -544,6 +544,7 @@ docker-compose up
 | `GITHUB_TOKEN` | GitHub API Token（可选，用于提高 API 速率限制） | 无 |
 | `LOG_LEVEL` | 日志级别（debug, info, warn, error） | `info` |
 | `RUST_LOG` | 日志级别（兼容旧版本配置） | `info` |
+| `CORS_ALLOWED_ORIGINS` | CORS 允许的来源（逗号分隔） | 无 |
 
 ### 缓存配置
 
@@ -561,9 +562,9 @@ docker-compose up
 | 变量名 | 说明 | 默认值 | 示例 |
 |--------|------|--------|------|
 | `MAX_CONCURRENT_DOWNLOADS` | 最大并发下载数 | `10` | `20` |
-| `DOWNLOAD_SPEED_LIMIT` | 下载速度限制（字节/秒），支持 `MB/s` 或 `KB/s` 单位 | `10MB/s` | `5MB/s` 或 `10240000` |
+<!-- | `DOWNLOAD_SPEED_LIMIT` | 下载速度限制（字节/秒），支持 `MB/s` 或 `KB/s` 单位 | `10MB/s` | `5MB/s` 或 `10240000` |
 | `MAX_DOWNLOADS_PER_WINDOW` | 每个时间窗口内的最大下载次数 | `100` | `200` |
-| `RATE_LIMIT_WINDOW_SECS` | 限流时间窗口大小（秒） | `60` | `300` |
+| `RATE_LIMIT_WINDOW_SECS` | 限流时间窗口大小（秒） | `60` | `300` | -->
 
 **限流说明：**
 - **并发限制**：限制同时进行的下载数量，超过限制的请求会等待或返回错误

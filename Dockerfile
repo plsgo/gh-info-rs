@@ -34,7 +34,8 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositorie
 
 # 安装运行时依赖（仅 ca-certificates 用于 HTTPS 证书验证）
 # 使用 rustls 后不需要 OpenSSL 运行时库
-RUN apk add --no-cache ca-certificates
+# 安装 curl 用于健康检查
+RUN apk add --no-cache ca-certificates curl
 
 # 从构建阶段复制二进制文件
 COPY --from=builder /app/target/release/gh-info-rs /app/gh-info-rs

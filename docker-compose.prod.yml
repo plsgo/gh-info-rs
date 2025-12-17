@@ -27,11 +27,7 @@ services:
       # 持久化缓存数据
       - ./data:/app/data/
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1",
-        ]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
