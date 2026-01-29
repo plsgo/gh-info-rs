@@ -10,7 +10,8 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositorie
 # 注意：使用 rustls 后不需要 OpenSSL 开发库
 RUN apk add --no-cache \
     musl-dev \
-    ca-certificates
+    ca-certificates \
+    curl
 
 # 复制依赖文件并构建（利用 Docker 缓存层）
 COPY Cargo.toml Cargo.lock ./
