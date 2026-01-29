@@ -21,8 +21,8 @@ log = "0.4"                                         # 日志 facade
 sha2 = "0.10"                                       # SHA-256 哈希算法
 hex = "0.4"                                         # 十六进制编码
 mime = "0.3"                                        # MIME 类型处理
-utoipa = { version = "4.0", features = ["actix_extras"] }  # OpenAPI 文档生成
-utoipa-swagger-ui = { version = "6.0", features = ["actix-web"] }  # Swagger UI 集成
+utoipa = { version = "5.4.0", features = ["actix_extras"] }  # OpenAPI 文档生成
+utoipa-swagger-ui = { version = "9.0.2", features = ["actix-web"] }  # Swagger UI 集成
 
 [dev-dependencies]
 tokio-test = "0.4"                                  # 异步测试工具
