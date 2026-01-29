@@ -2,7 +2,7 @@ use crate::cache::get_cache_manager;
 use crate::error::AppError;
 use crate::models::{
     BatchRequest, BatchResponse, BatchResponseMap, GithubRelease, GithubRepo,
-    LatestReleaseInfo, ReleaseInfo, RepoBatchResult, RepoInfo,
+    HealthResponse, LatestReleaseInfo, ReleaseInfo, RepoBatchResult, RepoInfo,
 };
 use crate::rate_limit::get_rate_limit_manager;
 use actix_web::{get, post, web, HttpResponse, Responder, HttpRequest};
